@@ -1,0 +1,6 @@
+{
+  "name": "India CSR Grant Finder",
+  "description": "Deterministic system architecture and interactive query directory to help Indian NGOs find active Schedule VII CSR grants.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
