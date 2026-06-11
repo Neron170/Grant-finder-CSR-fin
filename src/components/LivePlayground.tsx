@@ -43,8 +43,63 @@ export function LivePlayground() {
   const [designFormat, setDesignFormat] = useState<'bento-grid' | 'dense-ledger' | 'immersive-deck'>('bento-grid');
   const [selectedGrantId, setSelectedGrantId] = useState<number | null>(null);
 
-  // Compile Joined Grants Pool
+  // Live dynamic web scraping state variables
+  const [scanMode, setScanMode] = useState<'static' | 'scraped'>('static');
+  const [scrapedGrants, setScrapedGrants] = useState<JoinedGrantOpportunity[]>([]);
+  const [webSources, setWebSources] = useState<{ title: string; uri: string }[]>([]);
+  const [isScraping, setIsScraping] = useState<boolean>(false);
+  const [scrapingError, setScrapingError] = useState<string | null>(null);
+  const [scrapingWarning, setScrapingWarning] = useState<string | null>(null);
+
+  // Core scraper API proxy invoke handler
+  const handlePerformLiveScraping = async () => {
+    setIsScraping(true);
+    setScrapingError(null);
+    setScrapingWarning(null);
+    try {
+      const response = await fetch("/api/grants/search", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          query: filters.search_query,
+          state: filters.state,
+          sector: filters.schedule_vii
+        })
+      });
+      const data = await response.json();
+      if (data.success) {
+        const mapped: JoinedGrantOpportunity[] = data.grants.map((g: any, index: number) => ({
+          ...g,
+          grant_id: 2000 + index,
+          company_id: 2000 + index,
+          grant_type: g.grant_type || "Corporate CSR Program",
+          schedule_vii_category_code: g.schedule_vii_category_code || "SCH7_EDU"
+        }));
+        setScrapedGrants(mapped);
+        setWebSources(data.sources || []);
+        if (data.warning) {
+          setScrapingWarning(data.warning);
+        }
+        if (mapped.length > 0) {
+          setSelectedGrantId(mapped[0].grant_id);
+        }
+      } else {
+        setScrapingError(data.error || "Failed to retrieve dynamic live listings.");
+      }
+    } catch (err: any) {
+      setScrapingError(err.message || "Failed to reach backend scanning portal. Please ensure the dev server is active and GEMINI_API_KEY is configured inside Settings > Secrets.");
+    } finally {
+      setIsScraping(false);
+    }
+  };
+
+  // Compile Joined Grants Pool - Toggles dynamically between Static and live Scraped holdings
   const joinedGrants: JoinedGrantOpportunity[] = useMemo(() => {
+    if (scanMode === 'scraped') {
+      return scrapedGrants;
+    }
     return csrGrants.map(grant => {
       const company = companies.find(c => c.company_id === grant.company_id)!;
       return {
@@ -55,7 +110,7 @@ export function LivePlayground() {
         linkedin_url: company.linkedin_url
       };
     });
-  }, []);
+  }, [scanMode, scrapedGrants]);
 
   // Filter Logic matching Server Schema exactly
   const filteredGrants = useMemo(() => {
@@ -213,6 +268,81 @@ export function LivePlayground() {
             Clear Fields
           </button>
         </div>
+
+        {/* Information Directory Pool Mode Selection */}
+        <div className="space-y-1.5 border-b border-slate-100 pb-4">
+          <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block">Information Directory Pool</label>
+          <div className="grid grid-cols-2 gap-1 bg-slate-100 p-1 border border-slate-300">
+            <button
+              onClick={() => {
+                setScanMode('static');
+                setSelectedGrantId(null);
+                setScrapingError(null);
+              }}
+              className={`py-2 px-1 text-[9px] font-extrabold uppercase tracking-wider text-center transition ${
+                scanMode === 'static'
+                  ? 'bg-[#1e293b] text-white shadow'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+              }`}
+            >
+              Verified Register (Local)
+            </button>
+            <button
+              onClick={() => {
+                setScanMode('scraped');
+                setSelectedGrantId(null);
+                setScrapingError(null);
+              }}
+              className={`py-2 px-1 text-[9px] font-extrabold uppercase tracking-wider text-center transition ${
+                scanMode === 'scraped'
+                  ? 'bg-[#1e293b] text-white shadow'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+              }`}
+            >
+              Web Scanner (Live AI)
+            </button>
+          </div>
+        </div>
+
+        {/* Live AI Scraper Interactive Action Panel */}
+        {scanMode === 'scraped' && (
+          <div className="p-4 bg-orange-50/50 border border-orange-200 rounded-none space-y-3">
+            <div className="flex items-center gap-1.5">
+              <span className={`w-2.5 h-2.5 rounded-full bg-orange-550 ${isScraping ? 'animate-ping' : ''}`}></span>
+              <span className="text-[10px] font-bold text-slate-800 uppercase tracking-widest">Live Dynamic Search Grounder</span>
+            </div>
+            <p className="text-[10px] text-slate-600 leading-normal font-light">
+              Submit sector / state filters or input keywords, then press below to query live search grounding for newly posted active CSR Schedule VII opportunities.
+            </p>
+            <button
+              onClick={handlePerformLiveScraping}
+              disabled={isScraping}
+              className={`w-full py-2.5 text-[10px] uppercase tracking-widest font-extrabold text-[#1e293b] text-center border-2 border-[#1e293b] cursor-pointer transition ${
+                isScraping 
+                  ? 'bg-slate-100 text-slate-400 border-slate-300 cursor-not-allowed'
+                  : 'bg-orange-400 hover:bg-orange-500 hover:text-white'
+              }`}
+            >
+              {isScraping ? 'Scraping Live Web...' : 'Run Dynamic Web Scanner'}
+            </button>
+
+            {isScraping && (
+              <div className="space-y-1.5 pt-2 border-t border-orange-250 font-mono text-[9px] text-orange-850">
+                <div className="flex items-center gap-1">
+                  <span className="animate-spin text-orange-600">&#9696;</span>
+                  <span>Contacting Google search indexers...</span>
+                </div>
+                <div>Scanning MCA registries & corporate sheets...</div>
+              </div>
+            )}
+
+            {scrapingError && (
+              <div className="p-2 border border-red-200 bg-red-50 text-[9.5px] text-red-700 leading-normal font-mono">
+                {scrapingError}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Global Search */}
         <div className="space-y-1.5">
@@ -399,6 +529,16 @@ export function LivePlayground() {
         </div>
 
         {/* Dynamic Layout Delivery */}
+        {scanMode === 'scraped' && scrapingWarning && (
+          <div className="mb-4 p-4 bg-amber-50/80 border-l-4 border-amber-500 text-amber-900 border border-slate-200/50 flex items-start gap-2.5 rounded-none shadow-xs">
+            <span className="text-sm select-none">⚠️</span>
+            <div className="space-y-1">
+              <strong className="font-bold uppercase tracking-wider text-[10px] block text-amber-800 font-sans">API Quota Notice: Resilient Fallback Enabled</strong>
+              <p className="font-sans font-light leading-relaxed text-xs">{scrapingWarning}</p>
+            </div>
+          </div>
+        )}
+
         {filteredGrants.length === 0 ? (
           <div className="bg-white border-2 border-slate-300 p-12 text-center space-y-3 rounded-none">
             <HelpCircle className="w-10 h-10 text-slate-300 mx-auto animate-none" />
@@ -502,7 +642,18 @@ export function LivePlayground() {
                           <div className="col-span-2 pt-1 border-t border-dotted border-slate-200 flex justify-between items-center text-[10px]">
                             <div>
                               <span className="text-slate-400 font-bold uppercase text-[9px] block">Verified Source</span>
-                              <span className="text-slate-700 font-semibold">{grant.verification_source}</span>
+                              {grant.verification_source.startsWith('http') ? (
+                                <a
+                                  href={grant.verification_source}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-orange-600 font-extrabold underline hover:text-orange-700 inline-flex items-center gap-0.5"
+                                >
+                                  Open Portal Link <ExternalLink className="w-3 h-3" />
+                                </a>
+                              ) : (
+                                <span className="text-slate-700 font-semibold">{grant.verification_source}</span>
+                              )}
                             </div>
                             <div className="text-right">
                               <span className="text-slate-400 font-bold uppercase text-[9px] block">Allocation</span>
@@ -713,9 +864,24 @@ export function LivePlayground() {
                           )}
                         </div>
 
-                        <div className="bg-slate-50 border-l-2 border-[#1e293b] p-3 text-xs font-mono text-slate-700 space-y-1 mt-3">
+                        <div className="bg-slate-50 border-l-2 border-[#1e293b] p-3 text-xs font-mono text-slate-700 space-y-1.5 mt-3">
                           <div><span className="font-bold text-slate-400">CORP ID (CIN):</span> {activeGrant.cin_number}</div>
                           <div><span className="font-bold text-slate-400">FOCUS CATEGORY:</span> {activeGrant.schedule_vii_category_code}</div>
+                          <div>
+                            <span className="font-bold text-slate-400">VERIFIED SOURCE:</span>{' '}
+                            {activeGrant.verification_source.startsWith('http') ? (
+                              <a
+                                href={activeGrant.verification_source}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-orange-600 font-extrabold underline hover:text-orange-700 inline-flex items-center gap-0.5 font-sans"
+                              >
+                                Visited Source Portal <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            ) : (
+                              <span className="text-slate-700 font-semibold">{activeGrant.verification_source}</span>
+                            )}
+                          </div>
                         </div>
                       </div>
 
